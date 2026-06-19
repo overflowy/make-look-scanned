@@ -1,0 +1,82 @@
+# make-look-scanned
+
+A CLI that takes a PDF and degrades it to look like a physical scan of a
+printout — skew, grayscale, warm paper tone, scanner grain, defocus, edge
+shadow, and JPEG compression artifacts.
+
+Each page is rasterized to an image, run through the effect pipeline, and
+reassembled into a new **image-only** PDF (the original selectable text is
+gone — faithful to a basic scanner).
+
+## Build
+
+Requires Go and a C toolchain (go-fitz links MuPDF via cgo, so the binary is
+self-contained — nothing to install at runtime).
+
+```sh
+go build -o make-look-scanned .
+```
+
+## Usage
+
+```sh
+make-look-scanned [flags] input.pdf
+```
+
+Flags may appear before or after the input filename.
+
+```sh
+make-look-scanned in.pdf                 # -> in.scanned.pdf
+make-look-scanned in.pdf -o out.pdf
+make-look-scanned in.pdf --noise 0.4 --skew 2.5 --jpeg-quality 30
+```
+
+### Flags
+
+| Flag             | Default | Meaning                                   |
+|------------------|---------|-------------------------------------------|
+| `-o`             | `<input>.scanned.pdf` | output path                 |
+| `--preset`       | —       | named preset from `config.toml`           |
+| `--seed`         | content hash | random seed (override for a new look) |
+| `--force`        | false   | overwrite an existing output file         |
+| `--dpi`          | 150     | render resolution                         |
+| `--skew`         | 0.6     | max rotation degrees (0 disables)         |
+| `--grayscale`    | true    | desaturate (`--grayscale=false` keeps color) |
+| `--paper-tone`   | 0.4     | warm paper tint strength 0..1             |
+| `--noise`        | 0.08    | scanner grain 0..1                        |
+| `--blur`         | 0.4     | defocus gaussian sigma                    |
+| `--edge-shadow`  | 0.15    | border vignette 0..1                      |
+| `--jpeg-quality` | 70      | JPEG quality 1..100                       |
+
+Each numeric knob disables its effect at `0`.
+
+## Determinism
+
+Output is **deterministic by default**: the seed is derived from the input
+PDF's content, so the same file always produces the same scan. Pass `--seed N`
+for a different (but reproducible) look. Same input + seed yields a
+byte-identical PDF.
+
+## Presets
+
+Define reusable bundles in
+`$XDG_CONFIG_HOME/make-look-scanned/config.toml` (falls back to
+`~/.make-look-scanned/config.toml` when `XDG_CONFIG_HOME` is unset). Keys
+mirror the flag names with underscores:
+
+```toml
+[presets.medium]
+skew = 1.5
+paper_tone = 0.6
+noise = 0.2
+blur = 0.6
+edge_shadow = 0.3
+jpeg_quality = 45
+```
+
+```sh
+make-look-scanned --preset medium in.pdf
+```
+
+Precedence: built-in defaults → selected preset → explicit CLI flags (flags
+always win).

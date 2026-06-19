@@ -1,0 +1,9 @@
+# Compiled binary
+/make-look-scanned
+
+# Generated scanned output
+*.scanned.pdf
+
+# Internal design notes
+/CONTEXT.md
+/docs/
