@@ -2,7 +2,7 @@
 
 A CLI that takes a PDF and degrades it to look like a physical scan of a
 printout — skew, grayscale, warm paper tone, scanner grain, defocus, edge
-shadow, and JPEG compression artifacts.
+shadow, and JPEG compression artifacts. Also [runs client-side in the browser](https://overflowy.github.io/make-look-scanned/) via WASM.
 
 <img width="1990" height="1252" alt="example" src="https://github.com/user-attachments/assets/9653fd3b-3abe-4427-ad82-03a78d4429b5"/>
 
