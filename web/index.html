@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>make-look-scanned</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  .sub { opacity: .65; margin-top: 0; }
+  fieldset { border: 1px solid #8884; border-radius: 8px; margin: 1rem 0; }
+  label { display: grid; grid-template-columns: 9rem 1fr 3rem; align-items: center; gap: .5rem; margin: .35rem 0; }
+  label span:last-child { text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
+  label.check { grid-template-columns: 9rem auto; justify-items: start; }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; padding: .5rem 1rem; border-radius: 8px; border: 1px solid #8886; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin: 1rem 0; min-height: 1.4em; }
+  a#download { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>make-look-scanned</h1>
+<p class="sub">Make a PDF look like a scan — entirely in your browser. Nothing is uploaded.</p>
+
+<div class="row">
+  <input type="file" id="file" accept="application/pdf">
+</div>
+
+<fieldset>
+  <legend>Effects</legend>
+  <label><span>Skew (°)</span><input type="range" id="skew" min="0" max="10" step="0.1" value="0.6"><span id="skew-v"></span></label>
+  <label><span>Paper tone</span><input type="range" id="paperTone" min="0" max="1" step="0.01" value="0.6"><span id="paperTone-v"></span></label>
+  <label><span>Noise</span><input type="range" id="noise" min="0" max="1" step="0.01" value="0.08"><span id="noise-v"></span></label>
+  <label><span>Blur (σ)</span><input type="range" id="blur" min="0" max="5" step="0.1" value="0.4"><span id="blur-v"></span></label>
+  <label><span>Edge shadow</span><input type="range" id="edgeShadow" min="0" max="1" step="0.01" value="0.15"><span id="edgeShadow-v"></span></label>
+  <label><span>JPEG quality</span><input type="range" id="jpegQuality" min="1" max="100" step="1" value="70"><span id="jpegQuality-v"></span></label>
+  <label><span>Render DPI</span><input type="range" id="dpi" min="72" max="300" step="1" value="150"><span id="dpi-v"></span></label>
+  <label class="check"><span>Grayscale</span><input type="checkbox" id="grayscale" checked></label>
+  <label><span>Seed (optional)</span><input type="text" id="seed" placeholder="from file content" style="width:100%"><span></span></label>
+</fieldset>
+
+<div class="row">
+  <button id="scan" disabled>Scan PDF</button>
+  <a id="download" hidden download>Download scanned PDF</a>
+</div>
+
+<p id="status">Loading…</p>
+
+<!-- Go wasm runtime glue. The bundler inlines this tag. -->
+<script src="wasm_exec.js"></script>
+
+<!-- CONFIG: where PDF.js (ESM module), its worker, and the wasm bytes come from.
+     The bundler replaces this whole block to inline all three as blob/base64;
+     the GLUE below never changes. -->
+<script id="mls-config">
+  window.MLS = {
+    pdfjsModuleUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.0.227/+esm",
+    workerSrc: "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs",
+    wasmBytes: () => fetch("main.wasm").then((r) => r.arrayBuffer()),
+  };
+</script>
+
+<!-- GLUE: PDF.js renders each page, Go-wasm applies the effects + assembles. -->
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const status = (m) => { $("status").textContent = m; };
+
+  for (const id of ["skew","paperTone","noise","blur","edgeShadow","jpegQuality","dpi"]) {
+    const el = $(id), out = $(id + "-v");
+    const sync = () => { out.textContent = el.value; };
+    el.addEventListener("input", sync); sync();
+  }
+
+  // FNV-1a 64-bit over the file bytes — mirrors the CLI's content-derived seed.
+  function fnv1a64(bytes) {
+    const mask = 0xFFFFFFFFFFFFFFFFn, prime = 0x100000001b3n;
+    let h = 0xcbf29ce484222325n;
+    for (let i = 0; i < bytes.length; i++) { h ^= BigInt(bytes[i]); h = (h * prime) & mask; }
+    return h.toString();
+  }
+
+  function params() {
+    return {
+      dpi: +$("dpi").value, skew: +$("skew").value, paperTone: +$("paperTone").value,
+      noise: +$("noise").value, blur: +$("blur").value, edgeShadow: +$("edgeShadow").value,
+      jpegQuality: +$("jpegQuality").value, grayscale: $("grayscale").checked,
+    };
+  }
+
+  let pdfjsLib; // assigned during boot via dynamic import
+
+  // Load PDF.js (ESM) + boot the Go wasm module, then enable the UI.
+  (async () => {
+    try {
+      pdfjsLib = await import(window.MLS.pdfjsModuleUrl);
+      pdfjsLib.GlobalWorkerOptions.workerSrc = window.MLS.workerSrc;
+
+      const go = new Go();
+      const bytes = await window.MLS.wasmBytes();
+      const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
+      go.run(instance);
+      await new Promise((r) => setTimeout(r, 0)); // let main() install `mls`
+      status("Ready — choose a PDF.");
+      $("scan").disabled = false;
+    } catch (e) { status("Failed to load: " + (e.message || e)); }
+  })();
+
+  $("file").addEventListener("change", () => {
+    $("download").hidden = true;
+    if ($("file").files[0]) status("Ready to scan: " + $("file").files[0].name);
+  });
+
+  $("scan").addEventListener("click", async () => {
+    const file = $("file").files[0];
+    if (!file) { status("Pick a PDF first."); return; }
+    $("scan").disabled = true; $("download").hidden = true;
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const seed = $("seed").value.trim() || fnv1a64(buf);
+
+      let r = mls.reset({ ...params(), seed });
+      if (r.error) throw new Error(r.error);
+
+      const pdf = await pdfjsLib.getDocument({ data: buf.slice() }).promise;
+      const scale = (+$("dpi").value) / 72;
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        status(`Rendering page ${i} / ${pdf.numPages}…`);
+        const page = await pdf.getPage(i);
+        const vp = page.getViewport({ scale });
+        const pt = page.getViewport({ scale: 1 });
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const rgba = new Uint8Array(ctx.getImageData(0, 0, canvas.width, canvas.height).data.buffer);
+        r = mls.addPage(rgba, canvas.width, canvas.height, pt.width, pt.height);
+        if (r.error) throw new Error(r.error);
+      }
+
+      status("Assembling PDF…");
+      r = mls.build();
+      if (r.error) throw new Error(r.error);
+
+      const blob = new Blob([r.pdf], { type: "application/pdf" });
+      const a = $("download");
+      a.href = URL.createObjectURL(blob);
+      a.download = file.name.replace(/\.pdf$/i, "") + ".scanned.pdf";
+      a.hidden = false;
+      status(`Done — ${pdf.numPages} page(s).`);
+    } catch (e) {
+      status("Error: " + (e.message || e));
+    } finally {
+      $("scan").disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

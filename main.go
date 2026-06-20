@@ -36,7 +36,7 @@ func run() error {
 		dpi        = flag.Float64("dpi", 150, "render DPI")
 		skew       = flag.Float64("skew", 0.6, "max rotation degrees (0 disables)")
 		grayscale  = flag.Bool("grayscale", true, "desaturate to gray")
-		paperTone  = flag.Float64("paper-tone", 0.4, "warm paper tint strength 0..1")
+		paperTone  = flag.Float64("paper-tone", 0.6, "warm paper tint strength 0..1")
 		noise      = flag.Float64("noise", 0.08, "scanner grain 0..1")
 		blur       = flag.Float64("blur", 0.4, "defocus gaussian sigma")
 		edgeShadow = flag.Float64("edge-shadow", 0.15, "border vignette 0..1")
@@ -121,12 +121,16 @@ func run() error {
 	}
 
 	processed := make([]*image.RGBA, len(pages))
+	widthsPt := make([]float64, len(pages))
+	heightsPt := make([]float64, len(pages))
 	for i := range pages {
 		rng := rand.New(rand.NewSource(baseSeed ^ int64(i)*0x9E3779B9))
 		processed[i] = effects.Run(pages[i].Img, params, rng)
+		widthsPt[i] = pages[i].WidthPt
+		heightsPt[i] = pages[i].HeightPt
 	}
 
-	if err := assemble.Write(out, pages, processed, params.JPEGQuality); err != nil {
+	if err := assemble.Write(out, processed, widthsPt, heightsPt, params.JPEGQuality); err != nil {
 		return err
 	}
 

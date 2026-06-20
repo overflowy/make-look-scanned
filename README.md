@@ -42,7 +42,7 @@ make-look-scanned in.pdf --noise 0.4 --skew 2.5 --jpeg-quality 30
 | `--dpi`          | 150     | render resolution                         |
 | `--skew`         | 0.6     | max rotation degrees (0 disables)         |
 | `--grayscale`    | true    | desaturate (`--grayscale=false` keeps color) |
-| `--paper-tone`   | 0.4     | warm paper tint strength 0..1             |
+| `--paper-tone`   | 0.6     | warm paper tint strength 0..1             |
 | `--noise`        | 0.08    | scanner grain 0..1                        |
 | `--blur`         | 0.4     | defocus gaussian sigma                    |
 | `--edge-shadow`  | 0.15    | border vignette 0..1                      |
@@ -80,3 +80,27 @@ make-look-scanned --preset medium in.pdf
 
 Precedence: built-in defaults → selected preset → explicit CLI flags (flags
 always win).
+
+## Browser (WebAssembly)
+
+The effect pipeline also runs in the browser. go-fitz/MuPDF can't compile to
+wasm, so the browser uses **PDF.js** to rasterize pages and hands the pixels to
+the *same* Go effects + assembly code compiled to wasm.
+
+Dev (needs network for the PDF.js CDN):
+
+```sh
+./web/build.sh                       # builds web/main.wasm + wasm_exec.js
+(cd web && python3 -m http.server 8080)   # then open http://localhost:8080
+```
+
+Single self-contained file (works offline, nothing to serve):
+
+```sh
+task build:web                       # writes dist/make-look-scanned.html (~8 MB)
+```
+
+`dist/make-look-scanned.html` inlines the wasm, Go's runtime glue, and PDF.js
+(library + worker) as base64 — open it directly in a browser. Output is
+visually equivalent to the CLI but not byte-identical, since PDF.js and MuPDF
+rasterize differently.

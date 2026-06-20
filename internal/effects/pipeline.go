@@ -30,7 +30,7 @@ func Defaults() Params {
 		DPI:         150,
 		Skew:        0.6,
 		Grayscale:   true,
-		PaperTone:   0.4,
+		PaperTone:   0.6,
 		Noise:       0.08,
 		Blur:        0.4,
 		EdgeShadow:  0.15,

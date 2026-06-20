@@ -1,0 +1,28 @@
+# https://taskfile.dev
+
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  build:
+    desc: Build the CLI binary
+    cmds:
+      - go build -o make-look-scanned .
+
+  build:web:
+    desc: Build the single-file browser bundle (dist/make-look-scanned.html)
+    cmds:
+      - ./web/build.sh
+      - python3 web/bundle.py
+
+  lint:
+    desc: Apply go fix, vet (native + wasm), and check gofmt
+    cmds:
+      - go fix ./...
+      - go vet ./...
+      - GOOS=js GOARCH=wasm go vet ./cmd/wasm
+      - test -z "$(gofmt -l .)" || (echo "unformatted Go files:"; gofmt -l .; exit 1)
