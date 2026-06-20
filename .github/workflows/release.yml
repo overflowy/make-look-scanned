@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each target builds on a runner that natively matches its GOOS/GOARCH.
+        # This is required because the binary needs cgo (go-fitz statically links
+        # MuPDF only with CGO_ENABLED=1), and cgo cannot cross-compile to another
+        # OS without a C cross-toolchain.
+        include:
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux,   goarch: arm64, runner: ubuntu-24.04-arm }
+          - { goos: darwin,  goarch: amd64, runner: macos-13 }
+          - { goos: darwin,  goarch: arm64, runner: macos-14 }
+          - { goos: windows, goarch: amd64, runner: windows-latest }
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          ext=""
+          [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
+          go build -trimpath -ldflags "-s -w" -o "make-look-scanned${ext}" .
+
+      - name: Package
+        shell: bash
+        run: |
+          ext=""
+          [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
+          dist="make-look-scanned_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir "$dist"
+          mv "make-look-scanned${ext}" "$dist/"
+          cp README.md LICENSE "$dist/"
+          tar -czf "${dist}.tar.gz" "$dist"
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: make-look-scanned_*.tar.gz

@@ -104,3 +104,10 @@ task build:web                       # writes dist/make-look-scanned.html (~8 MB
 (library + worker) as base64 — open it directly in a browser. Output is
 visually equivalent to the CLI but not byte-identical, since PDF.js and MuPDF
 rasterize differently.
+
+## License
+
+[AGPL-3.0](LICENSE). The CLI statically links MuPDF (via go-fitz), which is
+AGPL-3.0, so the combined binary is AGPL-3.0 — distributing it requires offering
+the corresponding source. The browser build does not include MuPDF (it uses
+PDF.js, Apache-2.0).
