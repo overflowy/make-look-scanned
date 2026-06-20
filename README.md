@@ -4,6 +4,8 @@ A CLI that takes a PDF and degrades it to look like a physical scan of a
 printout — skew, grayscale, warm paper tone, scanner grain, defocus, edge
 shadow, and JPEG compression artifacts.
 
+<img width="1990" height="1252" alt="example" src="https://github.com/user-attachments/assets/9653fd3b-3abe-4427-ad82-03a78d4429b5"/>
+
 Each page is rasterized to an image, run through the effect pipeline, and
 reassembled into a new **image-only** PDF (the original selectable text is
 gone — faithful to a basic scanner).
