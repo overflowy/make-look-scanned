@@ -68,7 +68,17 @@ var paperColor = color.RGBA{R: 250, G: 247, B: 236, A: 255}
 // Run applies the effect stages in a fixed order. Order matters: the page is
 // toned and roughed up before being rotated, so every prior effect rotates
 // with the page. The JPEG pass happens later, in the assemble package.
+//
+// Each stochastic effect gets its own rng, seeded up front from the shared rng
+// in a fixed order. This keeps a given effect's randomness independent of the
+// others: noise draws one value per pixel, so a different DPI (more pixels)
+// would otherwise leave the shared rng in a different state by the time skew
+// reads its angle — making skew drift with DPI. Seeding per effect also makes
+// each effect's look independent of whether the others are enabled.
 func Run(img *image.RGBA, p Params, rng *rand.Rand) *image.RGBA {
+	noiseRng := rand.New(rand.NewSource(rng.Int63()))
+	skewRng := rand.New(rand.NewSource(rng.Int63()))
+
 	if p.Grayscale {
 		img = grayscale(img)
 	}
@@ -79,13 +89,13 @@ func Run(img *image.RGBA, p Params, rng *rand.Rand) *image.RGBA {
 		img = gaussianBlur(img, p.Blur)
 	}
 	if p.Noise > 0 {
-		img = noise(img, p.Noise, rng)
+		img = noise(img, p.Noise, noiseRng)
 	}
 	if p.EdgeShadow > 0 {
 		img = edgeShadow(img, p.EdgeShadow)
 	}
 	if p.Skew > 0 {
-		img = skew(img, p.Skew, rng)
+		img = skew(img, p.Skew, skewRng)
 	}
 	return img
 }
