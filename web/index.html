@@ -6,9 +6,11 @@
 <title>make-look-scanned</title>
 <style>
   :root { color-scheme: light dark; }
-  body { font: 15px/1.5 system-ui, sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
   h1 { font-size: 1.4rem; margin-bottom: .25rem; }
   .sub { opacity: .65; margin-top: 0; }
+  .layout { display: grid; grid-template-columns: minmax(0, 30rem) 1fr; gap: 1.5rem; align-items: start; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
   fieldset { border: 1px solid #8884; border-radius: 8px; margin: 1rem 0; }
   label { display: grid; grid-template-columns: 9rem 1fr 3rem; align-items: center; gap: .5rem; margin: .35rem 0; }
   label span:last-child { text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
@@ -19,12 +21,19 @@
   button:disabled { opacity: .5; cursor: default; }
   #status { margin: 1rem 0; min-height: 1.4em; }
   a#download { font-weight: 600; }
+  .preview { position: sticky; top: 1rem; }
+  .preview-frame { width: 100%; aspect-ratio: 1 / 1.294; border: 1px solid #8884; border-radius: 8px; background: #8881; }
+  #preview-empty { display: grid; place-items: center; text-align: center; opacity: .5; padding: 1rem; }
+  #preview-pdf { display: block; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <h1>make-look-scanned</h1>
 <p class="sub">Make a PDF look like a scan — entirely in your browser. Nothing is uploaded.</p>
 
+<div class="layout">
+<div class="controls">
 <div class="row">
   <input type="file" id="file" accept="application/pdf">
 </div>
@@ -48,6 +57,13 @@
 </div>
 
 <p id="status">Loading…</p>
+</div>
+
+<div class="preview">
+  <div id="preview-empty" class="preview-frame">Preview will appear here after scanning.</div>
+  <iframe id="preview-pdf" class="preview-frame" title="Scanned PDF preview" hidden></iframe>
+</div>
+</div>
 
 <!-- Go wasm runtime glue. The bundler inlines this tag. -->
 <script src="wasm_exec.js"></script>
@@ -91,7 +107,17 @@
     };
   }
 
-  let pdfjsLib; // assigned during boot via dynamic import
+  let pdfjsLib;       // assigned during boot via dynamic import
+  let previewUrl = ""; // current blob URL, shared by the iframe + download link
+
+  // Drop the preview/download back to the idle placeholder, freeing the blob.
+  function clearPreview() {
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = ""; }
+    $("preview-pdf").removeAttribute("src");
+    $("preview-pdf").hidden = true;
+    $("preview-empty").hidden = false;
+    $("download").hidden = true;
+  }
 
   // Load PDF.js (ESM) + boot the Go wasm module, then enable the UI.
   (async () => {
@@ -109,8 +135,10 @@
     } catch (e) { status("Failed to load: " + (e.message || e)); }
   })();
 
+  // A new file makes the old preview meaningless — clear it. Slider tweaks
+  // leave the previous render on screen as a baseline until the next scan.
   $("file").addEventListener("change", () => {
-    $("download").hidden = true;
+    clearPreview();
     if ($("file").files[0]) status("Ready to scan: " + $("file").files[0].name);
   });
 
@@ -148,10 +176,18 @@
       if (r.error) throw new Error(r.error);
 
       const blob = new Blob([r.pdf], { type: "application/pdf" });
+      if (previewUrl) URL.revokeObjectURL(previewUrl); // drop the prior scan's blob
+      previewUrl = URL.createObjectURL(blob);
+
       const a = $("download");
-      a.href = URL.createObjectURL(blob);
+      a.href = previewUrl;
       a.download = file.name.replace(/\.pdf$/i, "") + ".scanned.pdf";
       a.hidden = false;
+
+      $("preview-empty").hidden = true;
+      $("preview-pdf").src = previewUrl;
+      $("preview-pdf").hidden = false;
+
       status(`Done — ${pdf.numPages} page(s).`);
     } catch (e) {
       status("Error: " + (e.message || e));
